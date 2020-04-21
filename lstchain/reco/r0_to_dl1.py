@@ -135,7 +135,7 @@ def get_dl1(calibrated_event, telescope_id, dl1_container = None,
                                           pulse_time[signal_pixels],
                                           hillas)
         dl1_container.set_leakage(camera, image, signal_pixels)
-        dl1_container.set_concentration(camera, image, hillas)
+        dl1_container.set_concentration(camera, image, hillas, signal_pixels)
         dl1_container.n_pixels = n_pixels
         dl1_container.n_islands = num_islands
         dl1_container.set_telescope_info(calibrated_event, telescope_id)

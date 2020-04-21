@@ -164,8 +164,8 @@ class DL1ParametersContainer(Container):
         self.leakage1_pixel = leakage_c.leakage1_pixel
         self.leakage1_pixel = leakage_c.leakage2_pixel
 
-    def set_concentration(self, geom, image, hillas_parameters):
-        conc = concentration(geom, image, hillas_parameters)
+    def set_concentration(self, geom, image, hillas_parameters, mask):
+        conc = concentration(geom[mask], image[mask], hillas_parameters)
         self.concentration_cog = conc.concentration_cog
         self.concentration_core = conc.concentration_core
         self.concentration_pixel = conc.concentration_pixel
