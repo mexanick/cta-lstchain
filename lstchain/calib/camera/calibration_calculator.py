@@ -229,19 +229,10 @@ class LSTCalibrationCalculator(CalibrationCalculator):
         Output interleaved results on request
 
         """
-        new_ped = False
-        new_ff = False
+        #store results
+        self.pedestal.store_results(event)
+        self.flatfield.store_results(event)
 
-        # store results
-        if self.pedestal.num_events_seen > 0:
-            self.pedestal.store_results(event)
-            new_ped = True
+        # calculates calibration values
+        self.calculate_calibration_coefficients(event)
 
-            if self.flatfield.num_events_seen > 0:
-                self.flatfield.store_results(event)
-
-                # calculates calibration values
-                self.calculate_calibration_coefficients(event)
-                new_ff = True
-
-        return new_ped, new_ff
