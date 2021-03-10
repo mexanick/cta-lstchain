@@ -865,6 +865,7 @@ def add_column_table(table, ColClass, col_label, values):
     -------
     `tables.table.Table`
     """
+    log.debug('Adding %s column', col_label)
     # Step 1: Adjust table description
     d = table.description._v_colobjects.copy()  # original description
     d[col_label] = ColClass()  # add column
@@ -876,6 +877,7 @@ def add_column_table(table, ColClass, col_label, values):
     table.attrs._f_copy(newtable)  # copy attributes
     # Copy table rows, also add new column values:
     for row, value in zip(table, values):
+        log.debug('Row:\n%s\nValue:\n%s', list(row[:]), value)
         newtable.append([tuple(list(row[:]) + [value])])
     newtable.flush()
 

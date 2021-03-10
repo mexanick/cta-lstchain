@@ -219,7 +219,8 @@ def get_dl1(
     return dl1_container
 
 def r0_to_dl1(
-    input_filename=get_dataset_path('gamma_test_large.simtel.gz'),
+    input_filename=None,
+    #input_filename=get_dataset_path('gamma_test_large.simtel.gz'),
     output_filename=None,
     custom_config={},
 ):
@@ -415,6 +416,10 @@ def r0_to_dl1(
 
                 dl1_container.fill_event_info(event)
 
+                tel = event.dl1.tel[telescope_id]
+                tel.prefix = ''  # don't really need one
+                # remove the first part of the tel_name which is the type 'LST', 'MST' or 'SST'
+                tel_name = f'{str(subarray.tel[telescope_id])[4:]}-{telescope_id}'
 
                 if custom_calibration:
                     lst_calibration(event, telescope_id)
@@ -452,6 +457,11 @@ def r0_to_dl1(
                     dl1_container.trigger_type = event.lst.tel[telescope_id].evt.tib_masked_trigger
                 else:
                     dl1_container.trigger_type = event.trigger.event_type
+                    writer.exclude(f'telescope/parameters/{tel_name}', 'hadroness')
+                    writer.exclude(f'telescope/parameters/{tel_name}', 'dragon_time')
+                    writer.exclude(f'telescope/parameters/{tel_name}', 'ucts_time')
+                    writer.exclude(f'telescope/parameters/{tel_name}', 'tib_time')
+                    writer.exclude(f'telescope/parameters/{tel_name}', 'ucts_trigger_type')
 
 
                 dl1_container.az_tel = event.pointing.tel[telescope_id].azimuth
@@ -573,7 +583,13 @@ def r0_to_dl1(
 
     if is_simu and event is not None:
         # Reconstruct source position from disp for all events and write the result in the output file
-        add_disp_to_parameters_table(output_filename, dl1_params_lstcam_key, focal_length)
+        for ii, telescope_id in enumerate(event.dl1.tel.keys()):
+            logger.debug('Add DISP parameters for telescope %s' %telescope_id)
+            #tel_name = str(subarray.tel[telescope_id])[4:]
+            tel_name = f'{str(subarray.tel[telescope_id])[4:]}-{telescope_id}'
+            logger.debug('Telescope name is %s' %tel_name)
+            focal = subarray.tel[telescope_id].optics.equivalent_focal_length
+            add_disp_to_parameters_table(output_filename, f'dl1/event/telescope/parameters/{tel_name}', focal)
 
         # Write energy histogram from simtel file and extra metadata
         # ONLY of the simtel file has been read until the end, otherwise it seems to hang here forever
