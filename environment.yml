@@ -1,4 +1,5 @@
-name: lst-dev
+name: lst-dev-03032021
+prefix: /fefs/aswg/workspace/mykhailo.dalchenko/small_pix_cam/sw/conda_env
 channels:
   - default
   - cta-observatory
