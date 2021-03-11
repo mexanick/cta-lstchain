@@ -583,7 +583,7 @@ def r0_to_dl1(
 
     if is_simu and event is not None:
         # Reconstruct source position from disp for all events and write the result in the output file
-        for ii, telescope_id in enumerate(event.dl1.tel.keys()):
+        for telescope_id in config['source_config']['EventSource']['allowed_tels']:
             logger.debug('Add DISP parameters for telescope %s' %telescope_id)
             #tel_name = str(subarray.tel[telescope_id])[4:]
             tel_name = f'{str(subarray.tel[telescope_id])[4:]}-{telescope_id}'
