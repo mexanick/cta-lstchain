@@ -252,6 +252,7 @@ def train_sep(train, custom_config={}):
 
 
 def build_models(filegammas, fileprotons,
+                 dl1_params_key = 'dl1/event/telescope/parameters/LST_LSTCam',
                  save_models=True, path_models="./",
                  energy_min=-np.inf,
                  custom_config={},
@@ -305,8 +306,8 @@ def build_models(filegammas, fileprotons,
     # Adding a filter on mc_type just for training
     events_filters['mc_type'] = [-9000, np.inf]
 
-    df_gamma = pd.read_hdf(filegammas, key=dl1_params_lstcam_key)
-    df_proton = pd.read_hdf(fileprotons, key=dl1_params_lstcam_key)
+    df_gamma = pd.read_hdf(filegammas, key=dl1_params_key)
+    df_proton = pd.read_hdf(fileprotons, key=dl1_params_key)
 
     if config['source_dependent']:
         src_dep_df_gamma = pd.read_hdf(filegammas, key=dl1_params_src_dep_lstcam_key)

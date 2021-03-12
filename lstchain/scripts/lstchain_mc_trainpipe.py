@@ -20,6 +20,7 @@ import argparse
 from lstchain.reco import dl1_to_dl2
 from distutils.util import strtobool
 from lstchain.io.config import read_configuration_file
+from lstchain.io import get_dataset_keys
 
 parser = argparse.ArgumentParser(description="Train Random Forests.")
 
@@ -63,13 +64,21 @@ def main():
         except("Custom configuration could not be loaded !!!"):
             pass
 
-            
-    dl1_to_dl2.build_models(args.gammafile,
-                            args.protonfile,
-                            save_models=args.storerf,
-                            path_models=args.path_models,
-                            custom_config=config,
-                            )
+    dataset_keys = get_dataset_keys(args.gammafile)
+    params_keys = [k for k in dataset_keys if 'parameters/' in k]
+
+    for tel_id in config['source_config']['EventSource']['allowed_tels']:
+        for k in params_keys:
+            if k.endswith(f'{tel_id}'):
+                dl1_to_dl2.build_models(args.gammafile,
+                                        args.protonfile,
+                                        dl1_params_key=k,
+                                        save_models=args.storerf,
+                                        path_models=f"{args.path_models}/{k.split('/')[-1]}",
+                                        custom_config=config,
+                                        )
+            else:
+                pass
 
 
 if __name__ == '__main__':
