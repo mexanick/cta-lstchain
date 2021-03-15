@@ -56,7 +56,7 @@ args = parser.parse_args()
 
 def main():
     #Train the models
-        
+
     config = {}
     if args.config_file is not None:
         try:

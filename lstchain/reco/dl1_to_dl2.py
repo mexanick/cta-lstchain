@@ -9,6 +9,7 @@ Usage:
 
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.model_selection import train_test_split
 import joblib
@@ -19,8 +20,10 @@ from . import utils
 from . import disp
 from ..io import standard_config, replace_config
 import astropy.units as u
-from ..io.io import dl1_params_lstcam_key, dl1_params_src_dep_lstcam_key
+from ..io.io import dl1_params_src_dep_lstcam_key, read_single_optics, read_telescopes_descriptions
+from ctapipe.instrument import OpticsDescription
 from ctapipe.image.hillas import camera_to_shower_coordinates
+from lstchain.visualization import plot_dl2
 
 
 __all__ = [
@@ -329,34 +332,30 @@ def build_models(filegammas, fileprotons,
                                     )
 
 
-    #Train regressors for energy and disp_norm reconstruction, only with gammas
+    # Train regressors for energy and disp_norm reconstruction, only with gammas
+    # Prepare train and test samples
+    traing, testg = train_test_split(df_gamma, test_size=test_size)
 
-    reg_energy = train_energy(df_gamma, custom_config=config)
+    # Train
+    reg_energy = train_energy(traing, custom_config=config)
+    reg_disp_vector = train_disp_vector(traing, custom_config=config)
 
-    reg_disp_vector = train_disp_vector(df_gamma, custom_config=config)
+    # Train classifier for gamma/hadron separation.
 
-    #Train classifier for gamma/hadron separation.
+    trainp, testp = train_test_split(df_proton, test_size=test_size)
+    train = traing.append(trainp, ignore_index=True)
+    test = testg.append(testp, ignore_index=True)
 
-    train, testg = train_test_split(df_gamma, test_size=test_size)
-    test = testg.append(df_proton, ignore_index=True)
+    # Apply the regressors to the train and test sets
 
-    temp_reg_energy = train_energy(train, custom_config=config)
+    for df in (train, test):
+        df['log_reco_energy'] = reg_energy.predict(df[config['regression_features']])
+        disp_vector = reg_disp_vector.predict(df[config['regression_features']])
+        df['reco_disp_dx'] = disp_vector[:, 0]
+        df['reco_disp_dy'] = disp_vector[:, 1]
 
-    temp_reg_disp_vector = train_disp_vector(train, custom_config=config)
-
-    #Apply the regressors to the test set
-
-    test['log_reco_energy'] = temp_reg_energy.predict(test[config['regression_features']])
-    disp_vector = temp_reg_disp_vector.predict(test[config['regression_features']])
-    test['reco_disp_dx'] = disp_vector[:, 0]
-    test['reco_disp_dy'] = disp_vector[:, 1]
-
-    #Apply cut in reconstructed energy. New train set is the previous
-    #test with energy and disp_norm reconstructed.
-
-    train = test[test['log_reco_energy'] > energy_min]
-
-    del temp_reg_energy, temp_reg_disp_vector
+    # Apply selection on min energy for training
+    train = train[train['log_reco_energy'] > energy_min]
 
     #Train the Classifier
 
@@ -371,10 +370,31 @@ def build_models(filegammas, fileprotons,
         joblib.dump(reg_disp_vector, file_reg_disp_vector)
         joblib.dump(cls_gh, file_cls_gh)
 
+        # Save performance results on a test part of the dataset
+        tel_descriptions = read_telescopes_descriptions(filegammas)
+        tel_id = int(dl1_params_key.split('_')[-1])
+        tel_name = tel_descriptions[tel_id].name
+        focal_length = read_single_optics(filegammas, tel_name).equivalent_focal_length
+        test = apply_models(test, cls_gh, reg_energy, reg_disp_vector, config, focal_length)
+        plot_dl2.energy_results(test.query('mc_type==0'),
+                                f'{path_models}/energy_performance.h5',
+                                f'{path_models}/energy_performance.png')
+        plot_dl2.direction_results(test.query('mc_type==0'),
+                                   f'{path_models}/dir_performance.h5',
+                                   f'{path_models}/dir_performance.png')
+
+        fig, axes = plt.subplots(1, 3, figsize=(20, 5))
+        plot_dl2.plot_models_features_importances(path_models, axes=axes)
+        fig.savefig(f'{path_models}/features_importances.png')
+        fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+        ax = plot_dl2.plot_roc_gamma(test)
+        fig.savefig(f'{path_models}/roc_performance.png')
+
+
     return reg_energy, reg_disp_vector, cls_gh
 
 
-def apply_models(dl1, classifier, reg_energy, reg_disp_vector, focal_length=28*u.m, custom_config={}):
+def apply_models(dl1, classifier, reg_energy, reg_disp_vector, custom_config={}, focal_length=None):
     """Apply previously trained Random Forests to a set of data
     depending on a set of features.
 
@@ -420,6 +440,8 @@ def apply_models(dl1, classifier, reg_energy, reg_disp_vector, focal_length=28*u
                                                             dl2.y,
                                                             )
 
+    if focal_length is None:
+        focal_length = OpticsDescription.from_name('LST').equivalent_focal_length
     if 'mc_alt_tel' in dl2.columns:
         alt_tel = dl2['mc_alt_tel'].values
         az_tel = dl2['mc_az_tel'].values
