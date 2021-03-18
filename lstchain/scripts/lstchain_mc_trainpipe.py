@@ -20,7 +20,7 @@ import argparse
 from lstchain.reco import dl1_to_dl2
 from distutils.util import strtobool
 from lstchain.io.config import read_configuration_file
-from lstchain.io import get_dataset_keys
+from lstchain.io import get_dataset_keys, standard_config
 
 parser = argparse.ArgumentParser(description="Train Random Forests.")
 
@@ -63,6 +63,8 @@ def main():
             config = read_configuration_file(args.config_file)
         except("Custom configuration could not be loaded !!!"):
             pass
+    else:
+        config = standard_config
 
     dataset_keys = get_dataset_keys(args.gammafile)
     params_keys = [k for k in dataset_keys if 'parameters/' in k]

@@ -53,8 +53,6 @@ def main():
     output_dir.mkdir(exist_ok=True)
     output_file = output_dir / r0_to_dl1_filename(args.input_file.name)
 
-    r0_to_dl1.allowed_tels = {1, 2, 3, 4}
-
     config = {}
     if args.config_file is not None:
         try:
