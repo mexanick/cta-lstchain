@@ -958,7 +958,7 @@ def write_calibration_data(writer, mon_index, mon_event, new_ped=False, new_ff=F
         )
 
 
-def read_mc_dl2_to_QTable(filename):
+def read_dl2_to_pyirf(filename, dl2_parameters_key='dl2/event/telescope/parameters/LST_LSTCam'):
     """
     Read MC DL2 files from lstchain and convert into pyirf internal format
     - astropy.table.QTable
@@ -1003,10 +1003,8 @@ def read_mc_dl2_to_QTable(filename):
         viewcone=simu_info.max_viewcone_radius,
     )
 
-    events = pd.read_hdf(filename, key=dl2_params_lstcam_key).rename(
-        columns=name_mapping
-    )
-    events = QTable.from_pandas(events)
+    events = pd.read_hdf(filename, key=dl2_parameters_key).rename(columns=name_mapping)
+    events = table.QTable.from_pandas(events)
 
     for k, v in unit_mapping.items():
         events[k] *= v

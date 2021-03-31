@@ -9,7 +9,9 @@ Usage:
 
 import numpy as np
 import pandas as pd
+import math
 import matplotlib.pyplot as plt
+from tables import open_file
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.model_selection import train_test_split
 import joblib
@@ -18,9 +20,12 @@ from astropy.time import Time
 from astropy.coordinates import SkyCoord
 from . import utils
 from . import disp
-from ..io import standard_config, replace_config
+from ..io import standard_config, replace_config, get_dataset_keys
 import astropy.units as u
-from ..io.io import dl1_params_src_dep_lstcam_key, read_single_optics, read_telescopes_descriptions
+from ..io.io import (dl1_params_src_dep_lstcam_key,
+                     read_single_optics,
+                     read_telescopes_descriptions,
+                     write_dataframe)
 from ctapipe.instrument import OpticsDescription
 from ctapipe.image.hillas import camera_to_shower_coordinates
 from lstchain.visualization import plot_dl2
@@ -259,7 +264,8 @@ def build_models(filegammas, fileprotons,
                  save_models=True, path_models="./",
                  energy_min=-np.inf,
                  custom_config={},
-                 test_size=0.2,
+                 test_size_g=0.2,
+                 test_size_p=0.6,
                  ):
     """Uses MC data to train Random Forests for Energy and disp_norm
     reconstruction and G/H separation. Returns 3 trained RF.
@@ -321,38 +327,82 @@ def build_models(filegammas, fileprotons,
         src_dep_df_proton.columns = pd.MultiIndex.from_tuples([tuple(col[1:-1].replace('\'', '').replace(' ','').split(",")) for col in src_dep_df_proton.columns])
         df_proton = pd.concat([df_proton, src_dep_df_proton['on']], axis=1)
 
+    # Train classifier for gamma/hadron separation.
+
+    trainp, testp = train_test_split(df_proton, test_size=test_size_p)
+
+    # save train and test DL1 proton files for further reuse
+    # FIXME currently works only for source independent parameters!
+    dataset_keys = get_dataset_keys(fileprotons)
+    dataset_keys = [k for k in dataset_keys if 'parameters/' not in k]
+    with open_file(fileprotons, 'r') as h5in:
+        for suf in ('train', 'test'):
+            with open_file(fileprotons.replace('.h5', f'_{suf}.h5'), 'a') as h5out:
+                for key_to_write in dataset_keys:
+                    if not key_to_write.startswith('/'):
+                        key_to_write = '/' + key_to_write
+
+                    path, name = key_to_write.rsplit('/', 1)
+                    if path not in h5out:
+                        grouppath, groupname = path.rsplit('/', 1)
+                        g = h5out.create_group(
+                            grouppath, groupname, createparents=True
+                            )
+                    else:
+                        g = h5out.get_node(path)
+
+                    h5in.copy_node(key_to_write, g, overwrite=True)
+                # Alter n_showers in simulation info
+                simu_info = h5out.root['simulation/run_config']
+                num_showers = simu_info[:]['num_showers'].sum()
+                if suf == 'train':
+                    updated_num_showers = math.floor((1 - test_size_p) * num_showers)
+                else:
+                    updated_num_showers = math.floor(test_size_p * num_showers)
+                simu_info.modify_column(column=np.array(updated_num_showers), colname='num_showers')
+                simu_info.flush()
+
+            if suf == 'train':
+                write_dataframe(trainp, fileprotons.replace('.h5', f'_{suf}.h5'), dl1_params_key)
+            else:
+                write_dataframe(testp, fileprotons.replace('.h5', f'_{suf}.h5'), dl1_params_key)
+
+
     df_gamma = utils.filter_events(df_gamma,
                                    filters=events_filters,
                                    finite_params=config['regression_features'] + config['classification_features'],
                                    )
 
-    df_proton = utils.filter_events(df_proton,
-                                    filters=events_filters,
-                                    finite_params=config['regression_features'] + config['classification_features'],
-                                    )
+    trainp = utils.filter_events(trainp,
+                                 filters=events_filters,
+                                 finite_params=config['regression_features'] + config['classification_features'],
+                                 )
 
+    testp = utils.filter_events(testp,
+                                filters=events_filters,
+                                finite_params=config['regression_features'] + config['classification_features'],
+                                )
 
     # Train regressors for energy and disp_norm reconstruction, only with gammas
     # Prepare train and test samples
-    traing, testg = train_test_split(df_gamma, test_size=test_size)
+    traing, testg = train_test_split(df_gamma, test_size=test_size_g)
 
     # Train
     reg_energy = train_energy(traing, custom_config=config)
     reg_disp_vector = train_disp_vector(traing, custom_config=config)
 
-    # Train classifier for gamma/hadron separation.
-
-    trainp, testp = train_test_split(df_proton, test_size=test_size)
+    testp = testp.sample(frac=(1-test_size_p)*test_size_g/test_size_p)
     train = traing.append(trainp, ignore_index=True)
+    train = train.sample(frac=1).reset_index(drop=True)
     test = testg.append(testp, ignore_index=True)
+    test = test.sample(frac=1).reset_index(drop=True)
 
-    # Apply the regressors to the train and test sets
+    # Apply the regressors to the train dataset
 
-    for df in (train, test):
-        df['log_reco_energy'] = reg_energy.predict(df[config['regression_features']])
-        disp_vector = reg_disp_vector.predict(df[config['regression_features']])
-        df['reco_disp_dx'] = disp_vector[:, 0]
-        df['reco_disp_dy'] = disp_vector[:, 1]
+    train['log_reco_energy'] = reg_energy.predict(train[config['regression_features']])
+    disp_vector = reg_disp_vector.predict(train[config['regression_features']])
+    train['reco_disp_dx'] = disp_vector[:, 0]
+    train['reco_disp_dy'] = disp_vector[:, 1]
 
     # Apply selection on min energy for training
     train = train[train['log_reco_energy'] > energy_min]
@@ -389,7 +439,6 @@ def build_models(filegammas, fileprotons,
         fig, ax = plt.subplots(1, 1, figsize=(12, 8))
         ax = plot_dl2.plot_roc_gamma(test)
         fig.savefig(f'{path_models}/roc_performance.png')
-
 
     return reg_energy, reg_disp_vector, cls_gh
 
