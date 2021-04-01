@@ -356,9 +356,9 @@ def build_models(filegammas, fileprotons,
                 simu_info = h5out.root['simulation/run_config']
                 num_showers = simu_info[:]['num_showers']
                 if suf == 'train':
-                    updated_num_showers = math.floor((1 - test_size_p) * num_showers)
+                    updated_num_showers = np.floor((1 - test_size_p) * num_showers)
                 else:
-                    updated_num_showers = math.floor(test_size_p * num_showers)
+                    updated_num_showers = np.floor(test_size_p * num_showers)
                 simu_info.modify_column(column=updated_num_showers, colname='num_showers')
                 simu_info.flush()
 
